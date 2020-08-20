@@ -177,14 +177,14 @@ public class JavaParserUtil {
 	 */
 	private static Object checkReferencedSelection(Node node) {
 		if (node instanceof Resolvable<?>) {
-			if (node instanceof ReferenceType) {
-				ResolvedType dec = ((ReferenceType) node).resolve();
-				String name = toInternal(dec);
-				return new ClassSelection(name, false);
-			}
-			Resolvable<?> r = (Resolvable<?>) node;
 			Object resolved = null;
 			try {
+				if (node instanceof ReferenceType) {
+					ResolvedType dec = ((ReferenceType) node).resolve();
+					String name = toInternal(dec);
+					return new ClassSelection(name, false);
+				}
+				Resolvable<?> r = (Resolvable<?>) node;
 				resolved = r.resolve();
 			} catch (Throwable ex) {
 				return null;
@@ -484,7 +484,7 @@ public class JavaParserUtil {
 			try {
 				key = toInternal(((ClassOrInterfaceType) type).resolve().getTypeDeclaration().get());
 			} catch(UnsolvedSymbolException ex) {
-				Log.warn("Failed to resolve type '{}'", ex.getName());
+				Log.warn("JavaParser failed to resolve type '{}'", ex.getName());
 			} catch(UnsupportedOperationException ex) {
 				// Ok, so it may be "unsupported" however it may not technically be unresolvable.
 				// For instance, generic types like "<T>" are "unsupported" but do get resolved
