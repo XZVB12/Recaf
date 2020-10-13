@@ -1,6 +1,10 @@
 package me.coley.recaf.compiler;
 
+import me.coley.recaf.util.Log;
+import me.coley.recaf.util.VMUtil;
 import org.objectweb.asm.Opcodes;
+
+import java.lang.reflect.Field;
 
 /**
  * Wrapper for <i>-target</i> option.
@@ -17,6 +21,13 @@ public enum TargetVersion {
 
 	TargetVersion(String opt) {
 		this.opt = opt;
+	}
+
+	/**
+	 * @return VM version.
+	 */
+	public int version() {
+		return 4 + ordinal();
 	}
 
 	/**
@@ -50,6 +61,34 @@ public enum TargetVersion {
 			default:
 				return V8;
 		}
+	}
+
+	/**
+	 * @return Minimum version supported by Javac.
+	 */
+	public static TargetVersion getMinJavacSupport() {
+		try {
+			Class<?> cls = Class.forName("com.sun.tools.javac.jvm.Target");
+			Field min = cls.getDeclaredField("MIN");
+			Object minTargetInstance = min.get(null);
+			Field version = cls.getDeclaredField("majorVersion");
+			return fromClassMajor(version.getInt(minTargetInstance));
+		} catch (Exception ex) {
+			Log.error("Failed to find javac minimum supported version, defaulting to Java 7");
+		}
+		return V7;
+	}
+
+	/**
+	 * @return Maximum version supported by Javac.
+	 */
+	public static TargetVersion getMaxJavacSupport() {
+		try {
+			return fromClassMajor(VMUtil.getVmVersion());
+		} catch (Exception ex) {
+			Log.error("Failed to find javac maximum supported version, defaulting to Java 8 (52)");
+		}
+		return V7;
 	}
 
 	@Override

@@ -12,6 +12,8 @@ import me.coley.recaf.command.impl.Export;
 import me.coley.recaf.config.ConfBackend;
 import me.coley.recaf.control.gui.GuiController;
 import me.coley.recaf.mapping.MappingImpl;
+import me.coley.recaf.mapping.Mappings;
+import me.coley.recaf.mapping.TinyV2Mappings;
 import me.coley.recaf.plugin.PluginsManager;
 import me.coley.recaf.plugin.api.MenuProviderPlugin;
 import me.coley.recaf.search.QueryType;
@@ -31,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static me.coley.recaf.util.LangUtil.translate;
@@ -47,6 +50,7 @@ public class MainMenu extends MenuBar {
 	private final FileChooser fcLoadMap = new FileChooser();
 	private final FileChooser fcSaveApp = new FileChooser();
 	private final FileChooser fcSaveWorkspace = new FileChooser();
+	private final FileChooser fcSaveMap = new FileChooser();
 	private final GuiController controller;
 	private final Menu mFile;
 	private final Menu mFileRecent;
@@ -87,9 +91,10 @@ public class MainMenu extends MenuBar {
 					new ActionMenuItem(translate("ui.menubar.file.saveworkspace"), this::saveWorkspace));
 			// Mapping menu
 			Menu mApply = new Menu(translate("ui.menubar.mapping.apply"));
-			for (MappingImpl impl : MappingImpl.values())
-				mApply.getItems().add(new ActionMenuItem(impl.getDisplay(), () -> applyMap(impl)));
+			Menu mExport = new Menu(translate("ui.menubar.mapping.export"));
+			populateMappingMenus(mApply, mExport);
 			mMapping.getItems().add(mApply);
+			mMapping.getItems().add(mExport);
 		}
 		mConfig = new ActionMenu(translate("ui.menubar.config"), this::showConfig);
 		mThemeEditor = new ActionMenu(translate("ui.menubar.themeeditor"), this::showThemeEditor);
@@ -101,7 +106,10 @@ public class MainMenu extends MenuBar {
 				new ActionMenuItem(translate("ui.menubar.search.mem_reference"), this::searchMemberReference),
 				new ActionMenuItem(translate("ui.menubar.search.declare"),  this::searchDeclaration),
 				new ActionMenuItem(translate("ui.menubar.search.insn"),  this::searchInsn));
-		mAttach = new ActionMenu(translate("ui.menubar.attach"), this::attach);
+		mAttach = new Menu(translate("ui.menubar.attach"));
+		mAttach.getItems().addAll(
+				new ActionMenuItem(translate("ui.menubar.attach.existing"), this::attachExisting),
+				new ActionMenuItem(translate("ui.menubar.attach.create"), this::attachCreate));
 		mHistory = new ActionMenu(translate("ui.menubar.history"), this::showHistory);
 		mHelp = new Menu(translate("ui.menubar.help"));
 		if (SelfUpdater.hasUpdate()) {
@@ -136,23 +144,59 @@ public class MainMenu extends MenuBar {
 		}
 		getMenus().addAll(mPlugins, mHelp);
 		// Setup file-choosers
-		ExtensionFilter filter = new ExtensionFilter(translate("ui.fileprompt.open.extensions"),
+		ExtensionFilter loadFilter = new ExtensionFilter(translate("ui.fileprompt.open.extensions"),
 				"*.jar", "*.war", "*.class", "*.json");
-		fcLoadApp.setTitle(translate("ui.fileprompt.open"));
-		fcLoadApp.getExtensionFilters().add(filter);
-		fcLoadApp.setSelectedExtensionFilter(filter);
-		fcSaveApp.setTitle(translate("ui.fileprompt.export"));
-		fcSaveApp.getExtensionFilters().add(filter);
-		fcSaveApp.setSelectedExtensionFilter(filter);
-		filter = new ExtensionFilter(translate("ui.fileprompt.open.extensions"),
+		ExtensionFilter mappingFilter = new ExtensionFilter(translate("ui.fileprompt.mapping.extensions"),
 				"*.txt", "*.map", "*.mapping", "*.enigma", "*.pro", "*.srg", "*.tiny", "*.tinyv2");
-		fcLoadMap.setTitle(translate("ui.fileprompt.open"));
-		fcLoadMap.getExtensionFilters().add(filter);
-		fcLoadMap.setSelectedExtensionFilter(filter);
-		filter = new ExtensionFilter(translate("ui.fileprompt.open.extensions"), "*.json");
-		fcSaveWorkspace.setTitle(translate("ui.fileprompt.export"));
-		fcSaveWorkspace.getExtensionFilters().add(filter);
-		fcSaveWorkspace.setSelectedExtensionFilter(filter);
+		ExtensionFilter saveFilter = new ExtensionFilter(translate("ui.fileprompt.export.extensions"),
+				"*.jar", "*.war", "*.class", "*.zip");
+		ExtensionFilter saveWorkspaceFilter = new ExtensionFilter(translate("ui.fileprompt.workspace.extensions"),
+				"*.json");
+		ExtensionFilter saveMapFilter = new ExtensionFilter(translate("ui.fileprompt.export.mapping"),
+				"*.txt", "*.map", "*.mapping");
+		fcLoadApp.setTitle(translate("ui.fileprompt.open"));
+		fcLoadApp.getExtensionFilters().add(loadFilter);
+		fcLoadApp.setSelectedExtensionFilter(loadFilter);
+		fcSaveApp.setTitle(translate("ui.fileprompt.export"));
+		fcSaveApp.getExtensionFilters().add(saveFilter);
+		fcSaveApp.setSelectedExtensionFilter(saveFilter);
+		fcLoadMap.setTitle(translate("ui.fileprompt.mapping"));
+		fcLoadMap.getExtensionFilters().add(mappingFilter);
+		fcLoadMap.setSelectedExtensionFilter(mappingFilter);
+		fcSaveWorkspace.setTitle(translate("ui.fileprompt.workspace"));
+		fcSaveWorkspace.getExtensionFilters().add(saveWorkspaceFilter);
+		fcSaveWorkspace.setSelectedExtensionFilter(saveWorkspaceFilter);
+		fcSaveMap.setTitle(translate("ui.fileprompt.export.mapping"));
+		fcSaveMap.getExtensionFilters().add(saveMapFilter);
+		fcSaveMap.setSelectedExtensionFilter(saveMapFilter);
+	}
+
+	/**
+	 * Add mapping sub-items in the menus.
+	 *
+	 * @param applyMenu
+	 * 		Menu to hold sub-items to apply mappings of a given type.
+	 * @param exportMenu
+	 * 		Menu to hold sub-items to save as a given type of mappings.
+	 */
+	private void populateMappingMenus(Menu applyMenu, Menu exportMenu) {
+		for (MappingImpl impl : MappingImpl.values()) {
+			if (impl == MappingImpl.TINY2) {
+				// Edge case since there are multiple ways we can interpret the mapping directions
+				Menu tiny2Menu = new Menu(impl.getDisplay());
+				for (TinyV2Mappings.TinyV2SubType subType : TinyV2Mappings.TinyV2SubType.values()) {
+					tiny2Menu.getItems()
+							.add(new ActionMenuItem(subType.toString(), () -> applyTinyV2Map(subType)));
+				}
+				applyMenu.getItems().add(tiny2Menu);
+			} else {
+				applyMenu.getItems().add(new ActionMenuItem(impl.getDisplay(), () -> applyMap(impl)));
+			}
+			// TODO: Rewrite the mapping implementation design to work with both reading and writing
+			if (impl == MappingImpl.SIMPLE)  {
+				exportMenu.getItems().addAll(new ActionMenuItem(impl.getDisplay(), () -> exportMap(impl)));
+			}
+		}
 	}
 
 	/**
@@ -282,6 +326,35 @@ public class MainMenu extends MenuBar {
 	}
 
 	/**
+	 * Export the current {@link Workspace#getAggregatedMappings() aggregated mappings} to the given format.
+	 *
+	 * @param impl
+	 * 		Mapping implementation to use.
+	 */
+	private void exportMap(MappingImpl impl) {
+		if (controller.getWorkspace() == null) {
+			return;
+		}
+
+		fcSaveMap.setInitialDirectory(config().getRecentSaveMapDir());
+		File file = fcSaveMap.showSaveDialog(null);
+		if (file != null) {
+			// TODO: Make the Mappings classes do this conversion for their respective format
+			String fullMapping = controller.getWorkspace().getAggregatedMappings().entrySet().stream()
+					.map(e -> e.getKey() + " " + e.getValue())
+					.collect(Collectors.joining("\n"));
+			try {
+				FileUtils.write(file, fullMapping, UTF_8);
+				config().recentSaveMap = file.getAbsolutePath();
+			} catch(IOException ex) {
+				error(ex, "Failed to save simple mapping to file: {}", file.getName());
+				ExceptionAlert.show(ex, "Failed to save simple mapping to file: " + file.getName());
+			}
+
+		}
+	}
+
+	/**
 	 * Load a file and apply mappings of the given type.
 	 *
 	 * @param impl Mapping implementation type.
@@ -291,8 +364,26 @@ public class MainMenu extends MenuBar {
 		File file = fcLoadMap.showOpenDialog(null);
 		if (file != null) {
 			try {
-				impl.create(file.toPath(), controller.getWorkspace())
-						.accept(controller.getWorkspace().getPrimary());
+				Mappings mappings = impl.create(file.toPath(), controller.getWorkspace());
+				mappings.setCheckFieldHierarchy(true);
+				mappings.setCheckMethodHierarchy(true);
+				mappings.accept(controller.getWorkspace().getPrimary());
+			} catch (Exception ex) {
+				error(ex, "Failed to apply mappings: {}", file.getName());
+				ExceptionAlert.show(ex, "Failed to apply mappings: " + file.getName());
+			}
+		}
+	}
+
+	private void applyTinyV2Map(TinyV2Mappings.TinyV2SubType subType) {
+		fcLoadMap.setInitialDirectory(config().getRecentLoadDir());
+		File file = fcLoadMap.showOpenDialog(null);
+		if (file != null) {
+			try {
+				Mappings mappings = new TinyV2Mappings(file.toPath(), controller.getWorkspace(), subType);
+				mappings.setCheckFieldHierarchy(true);
+				mappings.setCheckMethodHierarchy(true);
+				mappings.accept(controller.getWorkspace().getPrimary());
 			} catch (Exception ex) {
 				error(ex, "Failed to apply mappings: {}", file.getName());
 				ExceptionAlert.show(ex, "Failed to apply mappings: " + file.getName());
@@ -317,7 +408,10 @@ public class MainMenu extends MenuBar {
 	private void showHistory() {
 		Stage stage = controller.windows().getHistoryWindow();
 		if(stage == null) {
-			stage = controller.windows().window(translate("ui.menubar.history"), new HistoryPane(controller), 800, 600);
+			HistoryPane pane = new HistoryPane(controller);
+			PluginsManager.getInstance()
+					.addPlugin(new HistoryPane.HistoryPlugin(pane));
+			stage = controller.windows().window(translate("ui.menubar.history"), pane, 800, 600);
 			controller.windows().setHistoryWindow(stage);
 		}
 		stage.show();
@@ -388,11 +482,24 @@ public class MainMenu extends MenuBar {
 	/**
 	 * Display attach window.
 	 */
-	private void attach() {
+	private void attachExisting() {
 		Stage stage = controller.windows().getAttachWindow();
 		if(stage == null) {
 			stage = controller.windows().window(translate("ui.menubar.attach"), new AttachPane(controller), 800, 600);
 			controller.windows().setAttachWindow(stage);
+		}
+		stage.show();
+		stage.toFront();
+	}
+
+	/**
+	 * Display JVM creation window.
+	 */
+	private void attachCreate() {
+		Stage stage = controller.windows().getJvmCreatorWindow();
+		if(stage == null) {
+			stage = controller.windows().window(translate("ui.createjvm"), new JvmCreationPane(controller), 650, 480);
+			controller.windows().setJvmCreatorWindow(stage);
 		}
 		stage.show();
 		stage.toFront();

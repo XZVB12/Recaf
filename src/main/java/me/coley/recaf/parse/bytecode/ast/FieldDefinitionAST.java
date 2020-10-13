@@ -1,6 +1,5 @@
 package me.coley.recaf.parse.bytecode.ast;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import static java.util.stream.Collectors.joining;
@@ -10,9 +9,7 @@ import static java.util.stream.Collectors.joining;
  *
  * @author Matt
  */
-public class FieldDefinitionAST extends AST {
-	private final List<DefinitionModifierAST> modifiers = new ArrayList<>();
-	private final NameAST name;
+public class FieldDefinitionAST extends DefinitionAST {
 	private final DescAST type;
 
 	/**
@@ -26,8 +23,7 @@ public class FieldDefinitionAST extends AST {
 	 * 		Field return type.
 	 */
 	public FieldDefinitionAST(int line, int start, NameAST name, DescAST type) {
-		super(line, start);
-		this.name = name;
+		super(line, start, name);
 		this.type = type;
 	}
 
@@ -48,13 +44,6 @@ public class FieldDefinitionAST extends AST {
 	}
 
 	/**
-	 * @return Field name.
-	 */
-	public NameAST getName() {
-		return name;
-	}
-
-	/**
 	 * @return Field type.
 	 */
 	public DescAST getType() {
@@ -62,8 +51,13 @@ public class FieldDefinitionAST extends AST {
 	}
 
 	@Override
+	public String getDescriptor() {
+		return getType().getDesc();
+	}
+
+	@Override
 	public String print() {
 		String modifiersStr = getModifiers().stream().map(AST::print).collect(joining(" "));
-		return "FIELD " + modifiersStr + " " + getType().print() + " " + getName().print();
+		return "DEFINE " + modifiersStr + " " + getType().print() + " " + getName().print();
 	}
 }

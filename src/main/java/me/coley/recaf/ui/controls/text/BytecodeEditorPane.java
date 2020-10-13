@@ -7,11 +7,14 @@ import javafx.scene.effect.ColorAdjust;
 import me.coley.recaf.parse.bytecode.*;
 import me.coley.recaf.control.gui.GuiController;
 import me.coley.recaf.parse.bytecode.ast.RootAST;
+import me.coley.recaf.plugin.PluginsManager;
+import me.coley.recaf.plugin.api.ClassVisitorPlugin;
 import me.coley.recaf.ui.controls.IconView;
 import me.coley.recaf.ui.controls.text.model.Languages;
 import me.coley.recaf.util.*;
 import me.coley.recaf.util.struct.LineException;
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.tree.*;
 
@@ -26,16 +29,16 @@ import java.util.List;
 public class BytecodeEditorPane extends EditorPane<BytecodeErrorHandling, BytecodeContextHandling> {
 	private static final double DEFAULT_BOTTOM_DISPLAY_PERCENT = 0.72;
 	public static final int HOVER_ERR_TIME = 50;
-	private final String className;
-	private final String memberName;
-	private final String memberDesc;
-	private final boolean isMethod;
 	private BytecodeStackHelper stackHelper;
 	private BytecodeLocalHelper localHelper;
 	private IconView errorGraphic;
 	private ParseResult<RootAST> lastParse;
-	private MethodNode currentMethod;
-	private FieldNode currentField;
+	protected final String className;
+	protected final boolean isMethod;
+	protected String memberName;
+	protected String memberDesc;
+	protected MethodNode currentMethod;
+	protected FieldNode currentField;
 
 	/**
 	 * @param controller
@@ -194,44 +197,105 @@ public class BytecodeEditorPane extends EditorPane<BytecodeErrorHandling, Byteco
 			// Skip of not saved
 			return null;
 		}
-		boolean found = false;
+		// Don't use the final member name/desc, use whatever has been assembled
+		String newMemberName = null;
+		String newMemberDesc = null;
+		if (isMethod) {
+			newMemberName = currentMethod.name;
+			newMemberDesc = currentMethod.desc;
+		} else {
+			newMemberName = currentField.name;
+			newMemberDesc = currentField.desc;
+		}
+		// Check if user changed the name
 		ClassReader cr  = controller.getWorkspace().getClassReader(className);
 		ClassNode existingNode = ClassUtil.getNode(cr, ClassReader.EXPAND_FRAMES);
+		int removedIndex = removeIfRenamed(newMemberName, newMemberDesc, existingNode);
+		// Update last used name
+		memberName = newMemberName;
+		memberDesc = newMemberDesc;
+		updateOrInsert(newMemberName, newMemberDesc, existingNode, removedIndex);
+		// Compile changes
+		ClassWriter cw = controller.getWorkspace().createWriter(ClassWriter.COMPUTE_FRAMES);
+		ClassVisitor visitor = cw;
+		for (ClassVisitorPlugin visitorPlugin : PluginsManager.getInstance()
+				.ofType(ClassVisitorPlugin.class)) {
+			visitor = visitorPlugin.intercept(visitor);
+		}
+		existingNode.accept(visitor);
+		return cw.toByteArray();
+	}
+
+
+	protected int removeIfRenamed(String newMemberName, String newMemberDesc, ClassNode existingNode) {
+		if ((memberName != null && !memberName.equals(newMemberName)) ||
+				(memberDesc != null && !memberDesc.equals(newMemberDesc))) {
+			// Remove the old member
+			Log.debug("User changed member definition name or desc when inserting a new member");
+			if (isMethod) {
+				for(int i = 0; i < existingNode.methods.size(); i++) {
+					MethodNode existingMethod = existingNode.methods.get(i);
+					if(existingMethod.name.equals(memberName) && existingMethod.desc.equals(memberDesc)) {
+						existingNode.methods.remove(i);
+						return i;
+					}
+				}
+			} else {
+				for(int i = 0; i < existingNode.fields.size(); i++) {
+					FieldNode existingField = existingNode.fields.get(i);
+					if(existingField.name.equals(memberName) && existingField.desc.equals(memberDesc)) {
+						existingNode.fields.remove(i);
+						return i;
+					}
+				}
+			}
+		}
+		return -1;
+	}
+
+	protected void updateOrInsert(String newMemberName, String newMemberDesc, ClassNode existingNode, int removedIdx) {
+		boolean found = false;
 		if (isMethod) {
+			// Reinsert at the location if the method was removed due to a definition change
+			if (removedIdx >= 0) {
+				existingNode.methods.add(removedIdx, currentMethod);
+				return;
+			}
+			// Overwrite if its been added and we're making an change
 			for(int i = 0; i < existingNode.methods.size(); i++) {
 				MethodNode existingMethod = existingNode.methods.get(i);
-				if(existingMethod.name.equals(memberName) && existingMethod.desc.equals(memberDesc)) {
+				if(existingMethod.name.equals(newMemberName) && existingMethod.desc.equals(newMemberDesc)) {
 					ClassUtil.copyMethodMetadata(existingMethod, currentMethod);
 					existingNode.methods.set(i, currentMethod);
 					found = true;
 					break;
 				}
 			}
-			// Skip if no method match
+			// Add if no method match
 			if(!found) {
-				Log.error("No method match for {}.{}{}", className, memberName, memberDesc);
-				return null;
+				existingNode.methods.add(currentMethod);
 			}
 		} else {
+			// Reinsert at the location if the field was removed due to a definition change
+			if (removedIdx >= 0) {
+				existingNode.fields.add(removedIdx, currentField);
+				return;
+			}
+			// Overwrite if its been added and we're making an change
 			for(int i = 0; i < existingNode.fields.size(); i++) {
-				FieldNode fn = existingNode.fields.get(i);
-				if(fn.name.equals(memberName) && fn.desc.equals(memberDesc)) {
-					ClassUtil.copyFieldMetadata(currentField, fn);
+				FieldNode existingField = existingNode.fields.get(i);
+				if(existingField.name.equals(newMemberName) && existingField.desc.equals(newMemberDesc)) {
+					ClassUtil.copyFieldMetadata(currentField, existingField);
 					existingNode.fields.set(i, currentField);
 					found = true;
 					break;
 				}
 			}
-			// Skip if no field match
+			// Add if no field match
 			if(!found) {
-				Log.error("No field match for {}.{}", className, memberName);
-				return null;
+				existingNode.fields.add(currentField);
 			}
 		}
-		// Compile changes
-		ClassWriter cw = controller.getWorkspace().createWriter(ClassWriter.COMPUTE_FRAMES);
-		existingNode.accept(cw);
-		return cw.toByteArray();
 	}
 
 	/**

@@ -1,6 +1,5 @@
 package me.coley.recaf.ui;
 
-import com.sun.javafx.application.PlatformImpl;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Orientation;
@@ -11,17 +10,22 @@ import javafx.scene.layout.BorderPane;
 import javafx.stage.Stage;
 import me.coley.recaf.Recaf;
 import me.coley.recaf.control.gui.GuiController;
+import me.coley.recaf.plugin.PluginsManager;
+import me.coley.recaf.plugin.api.InternalPlugin;
+import me.coley.recaf.plugin.api.WorkspacePlugin;
 import me.coley.recaf.ui.controls.*;
 import me.coley.recaf.ui.controls.popup.UpdateWindow;
 import me.coley.recaf.ui.controls.view.ClassViewport;
 import me.coley.recaf.ui.controls.view.FileViewport;
 import me.coley.recaf.util.ThreadUtil;
 import me.coley.recaf.util.self.SelfUpdater;
+import me.coley.recaf.util.VMUtil;
 import me.coley.recaf.workspace.JavaResource;
+import me.coley.recaf.workspace.Workspace;
+import org.plugface.core.annotations.Plugin;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.PlatformLoggingMXBean;
-import java.lang.reflect.Field;
 
 import static me.coley.recaf.util.ClasspathUtil.resource;
 
@@ -47,6 +51,7 @@ public class MainWindow extends Application {
 
 	@Override
 	public void start(Stage stage) throws Exception {
+		Platform.setImplicitExit(false);
 		// Set instances
 		window = this;
 		this.stage = stage;
@@ -73,7 +78,7 @@ public class MainWindow extends Application {
 		viewRoot.setCenter(tabs);
 		// Navigation
 		updateWorkspaceNavigator();
-		Recaf.getWorkspaceSetListeners().add(w -> updateWorkspaceNavigator());
+		PluginsManager.getInstance().addPlugin(new WindowPlugin());
 		// Create scene & display the window
 		Scene scene = new Scene(root, 800, 600);
 		controller.windows().reapplyStyle(scene);
@@ -154,6 +159,13 @@ public class MainWindow extends Application {
 	}
 
 	/**
+	 * @return Root control.
+	 */
+	public BorderPane getRoot() {
+		return root;
+	}
+
+	/**
 	 * @return Menubar.
 	 */
 	public MainMenu getMenubar() {
@@ -176,14 +188,12 @@ public class MainWindow extends Application {
 	public static MainWindow get(GuiController controller) {
 		if(window == null) {
 			MainWindow app = window = new MainWindow(controller);
-			PlatformImpl.startup(() -> {
+			VMUtil.tkIint();
+			Platform.runLater(() -> {
             	Stage stage = new Stage();
             	try {
-					Field field = Stage.class.getDeclaredField("primary");
-					field.setAccessible(true);
-					field.setBoolean(stage, true);
-            		app.init();
-                	app.start(stage);
+					app.init();
+					app.start(stage);
                 } catch (Exception ex) {
             		throw new RuntimeException(ex);
             	}
@@ -252,5 +262,27 @@ public class MainWindow extends Application {
 	 */
 	public void setTitle(String title) {
 		ThreadUtil.checkJfxAndEnqueue(() -> stage.setTitle(title));
+	}
+
+	@Plugin(name = "MainWindow")
+	private final class WindowPlugin implements WorkspacePlugin, InternalPlugin {
+
+		@Override
+		public void onOpened(Workspace workspace) {
+			updateWorkspaceNavigator();
+		}
+
+		@Override
+		public void onClosed(Workspace workspace) { }
+
+		@Override
+		public String getVersion() {
+			return Recaf.VERSION;
+		}
+
+		@Override
+		public String getDescription() {
+			return "Main window UI.";
+		}
 	}
 }

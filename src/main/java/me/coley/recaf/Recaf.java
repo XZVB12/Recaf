@@ -8,22 +8,18 @@ import me.coley.recaf.plugin.PluginsManager;
 import me.coley.recaf.plugin.api.EntryLoaderProviderPlugin;
 import me.coley.recaf.util.Log;
 import me.coley.recaf.util.Natives;
+import me.coley.recaf.util.VMUtil;
 import me.coley.recaf.util.self.SelfDependencyPatcher;
-import me.coley.recaf.util.self.SelfReferenceUtil;
 import me.coley.recaf.util.self.SelfUpdater;
 import me.coley.recaf.workspace.InstrumentationResource;
 import me.coley.recaf.workspace.Workspace;
+import org.objectweb.asm.Opcodes;
 import picocli.CommandLine;
 
-import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.function.Consumer;
-import java.util.jar.JarFile;
 
 import static me.coley.recaf.util.Log.*;
 
@@ -33,16 +29,14 @@ import static me.coley.recaf.util.Log.*;
  * @author Matt
  */
 public class Recaf {
-	public static final String VERSION = "2.4.1";
+	public static final String VERSION = "2.11.0";
 	public static final String DOC_URL = "https://col-e.github.io/Recaf/documentation.html";
+	public static final int ASM_VERSION = Opcodes.ASM9;
 	private static Controller currentController;
 	private static Workspace currentWorkspace;
 	private static boolean initialized;
 	private static boolean headless;
-	/**
-	 * Listeners to call when the {@link #currentWorkspace current workspace} is changed.
-	 */
-	private static final Set<Consumer<Workspace>> workspaceSetListeners = new HashSet<>();
+	private static Path configDir;
 
 	/**
 	 * Start Recaf.
@@ -56,58 +50,22 @@ public class Recaf {
 		launch(args);
 	}
 
-	/**
-	 * Start Recaf as a launch-argument Java agent.
-	 *
-	 * @param agentArgs
-	 * 		Agent arguments to pass to Recaf.
-	 * @param inst
-	 * 		Instrumentation instance.
-	 */
-	public static void premain(String agentArgs, Instrumentation inst) {
-		agent(agentArgs, inst);
-	}
-
-	/**
-	 * Start Recaf as a dynamically attached Java agent.
-	 *
-	 * @param agentArgs
-	 * 		Agent arguments to pass to Recaf.
-	 * @param inst
-	 * 		Instrumentation instance.
-	 */
-	public static void agentmain(String agentArgs, Instrumentation inst) {
-		agent(agentArgs, inst);
-	}
-
 	private static void agent(String args, Instrumentation inst) {
-		if (InstrumentationResource.isActive()) {
-			String message = "Recaf was previously attached to current VM.\n" +
-					"Reattaching currently not supported.\n" +
-					"Watch GitHub for further releases that might solve this issue.";
-			throw new UnsupportedOperationException(message);
+		InstrumentationResource.instrumentation = inst;
+		if (Recaf.class.getClassLoader() == ClassLoader.getSystemClassLoader()) {
+			warn("Recaf was attached and loaded into system class loader," +
+					" that is not a good thing!");
 		}
-		try {
-			inst.appendToSystemClassLoaderSearch(new JarFile(SelfReferenceUtil.get().getFile()));
-		} catch (IOException ex) {
-			Log.error(ex, "Failed to self-append to system classloader search.");
-		}
-		Thread t = Thread.currentThread();
-		if (t.getContextClassLoader() == null) {
-			ClassLoader cl = Recaf.class.getClassLoader();
-			if (cl == null) cl = ClassLoader.getSystemClassLoader();
-			t.setContextClassLoader(cl);
-		}
+
 		init();
 		// Log that we are an agent
 		info("Starting as agent...");
 		// Add instrument launch arg
 		if(args == null || args.trim().isEmpty())
 			args = "--instrument";
-		else if(args.contains("--instrument"))
+		else if(!args.contains("--instrument"))
 			args = args + ",--instrument";
 		// Set instance
-		InstrumentationResource.instrumentation = inst;
 		// Start Recaf
 		launch(args.split("[=,]"));
 	}
@@ -117,6 +75,8 @@ public class Recaf {
 	 */
 	private static void init() {
 		if (!initialized) {
+			// Bypass JDK restrictions.
+			VMUtil.patch();
 			// Patch in dependencies
 			SelfDependencyPatcher.patch();
 			// Fix title bar not displaying in GTK systems
@@ -168,11 +128,6 @@ public class Recaf {
 	 * 		New workspace.
 	 */
 	public static void setCurrentWorkspace(Workspace currentWorkspace) {
-		try {
-			workspaceSetListeners.forEach(listener -> listener.accept(currentWorkspace));
-		} catch(Throwable t) {
-			Log.error(t, "Workspace listener threw an error: {}", t.getMessage());
-		}
 		Recaf.currentWorkspace = currentWorkspace;
 	}
 
@@ -205,13 +160,6 @@ public class Recaf {
 	}
 
 	/**
-	 * @return Set of listeners to call when the {@link #currentWorkspace current workspace} is changed.
-	 */
-	public static Set<Consumer<Workspace>> getWorkspaceSetListeners() {
-		return workspaceSetListeners;
-	}
-
-	/**
 	 * @return {@code true} when Recaf is running in headless mode.
 	 */
 	public static boolean isHeadless() {
@@ -222,7 +170,12 @@ public class Recaf {
 	 * @return Recaf's storage directory.
 	 */
 	public static Path getDirectory() {
-		return Paths.get(BaseDirectories.get().configDir).resolve("Recaf");
+		Path configDir = Recaf.configDir;
+		if (configDir == null) {
+			configDir = Recaf.configDir = Paths.get(BaseDirectories.get().configDir)
+					.resolve("Recaf");
+		}
+		return configDir;
 	}
 
 	/**

@@ -1,6 +1,6 @@
 package me.coley.recaf.util;
 
-import me.coley.recaf.util.struct.VMUtil;
+import me.coley.recaf.Recaf;
 
 import java.io.*;
 
@@ -27,6 +27,7 @@ import static java.lang.Class.forName;
  * @author xxDark
  */
 public class ClasspathUtil {
+	private static final String RECAF_CL = "me.coley.recaf.util.RecafClassLoader";
 	/**
 	 * The system classloader, provided by {@link ClassLoader#getSystemClassLoader()}.
 	 */
@@ -150,6 +151,32 @@ public class ClasspathUtil {
 		}
 	}
 
+
+	/**
+	 * @param loader
+	 * 		Loader to check.
+	 *
+	 * @return {@code true} if loader belongs to Recaf.
+	 */
+	public static boolean isRecafLoader(ClassLoader loader) {
+		// Why are all good features only available in JDK9+?
+		// See java.lang.ClassLoader#getName().
+		if (loader == Recaf.class.getClassLoader()) {
+			return true;
+		}
+		return loader != null && RECAF_CL.equals(loader.getClass().getName());
+	}
+
+	/**
+	 * @param clazz
+	 * 		Class to check.
+	 *
+	 * @return {@code true} if class is loaded by Recaf.
+	 */
+	public static boolean isRecafClass(Class<?> clazz) {
+		return isRecafLoader(clazz.getClassLoader());
+	}
+
 	/**
 	 * Internal utility to check if bootstrap classes exist in a list of class names.
 	 */
@@ -159,7 +186,7 @@ public class ClasspathUtil {
 	}
 
 	private static Set<String> scanBootstrapClasses() throws Exception {
-		float vmVersion = VMUtil.getVmVersion();
+		int vmVersion = VMUtil.getVmVersion();
 		Set<String> classes = new LinkedHashSet<>(4096, 1F);
 		if (vmVersion < 9) {
 			Method method = ClassLoader.class.getDeclaredMethod("getBootstrapClassPath");

@@ -1,7 +1,10 @@
 package me.coley.recaf.mapping;
 
+import me.coley.recaf.plugin.PluginsManager;
+import me.coley.recaf.plugin.api.ClassVisitorPlugin;
 import me.coley.recaf.workspace.*;
 import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.commons.ClassRemapper;
 
@@ -145,6 +148,8 @@ public class Mappings {
 		workspace.onPrimaryDefinitionChanges(updated.keySet());
 		// Update hierarchy graph
 		workspace.getHierarchyGraph().refresh();
+		// Update saved mappings
+		workspace.updateAggregateMappings(getMappings(), updated.keySet());
 		return updated;
 	}
 
@@ -161,7 +166,7 @@ public class Mappings {
 			accept(updated, cr, ClassReader.SKIP_FRAMES, ClassWriter.COMPUTE_FRAMES);
 		} catch(IllegalArgumentException ex) {
 			// ASM throws: "JSR/RET are not supported with computeFrames option"
-			if (ex.getMessage().contains("JSR/RET")) {
+			if (ex.getMessage() != null && ex.getMessage().contains("JSR/RET")) {
 				accept(updated, cr, ClassReader.EXPAND_FRAMES, ClassWriter.COMPUTE_MAXS);
 			}
 		}
@@ -174,7 +179,12 @@ public class Mappings {
 				checkFieldHierarchy, checkMethodHierarchy, workspace);
 		WorkspaceClassWriter cw = workspace.createWriter(writeFlags);
 		cw.setMappings(getMappings(), reverseClassMappings);
-		ClassRemapper adapter = new ClassRemapper(cw, mapper);
+		ClassVisitor visitor = cw;
+		for (ClassVisitorPlugin visitorPlugin : PluginsManager.getInstance()
+				.ofType(ClassVisitorPlugin.class)) {
+			visitor = visitorPlugin.intercept(visitor);
+		}
+		ClassRemapper adapter = new LenientClassRemapper(visitor, mapper);
 		if (clearDebugInfo)
 			readFlags |= ClassReader.SKIP_DEBUG;
 		cr.accept(adapter, readFlags);

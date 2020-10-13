@@ -91,7 +91,7 @@ public class ClassViewport extends EditorViewport {
 					pane.setText(initialText);
 				} else {
 					pane = new JavaEditorPane(controller, resource, initialText);
-					pane.setWrapText(false);
+					pane.setWrapText(controller.config().display().forceWordWrap);
 					setCenter(pane);
 				}
 				pane.setEditable(pane.canCompile() && resource.isPrimary());
@@ -110,8 +110,12 @@ public class ClassViewport extends EditorViewport {
 					Platform.runLater(() -> {
 						finalPane.setText(decompile);
 						finalPane.forgetHistory();
-						finalPane.getCodeArea().scrollXToPixel(lastScrollX);
-						finalPane.getCodeArea().scrollYToPixel(lastScrollY);
+						if (lastScrollY > 0) {
+							finalPane.getCodeArea().scrollXToPixel(lastScrollX);
+							finalPane.getCodeArea().scrollYToPixel(lastScrollY);
+						} else {
+							finalPane.scrollToTop();
+						}
 					});
 					// Sometimes the code analysis gets stuck on the initial commented out text...
 					// This checks for getting stuck and forces an update. Hacky, but does the job.
@@ -279,6 +283,13 @@ public class ClassViewport extends EditorViewport {
 		if (overrideMode != null)
 			return overrideMode;
 		return controller.config().display().classEditorMode;
+	}
+
+	/**
+	 * @return Controller
+	 */
+	public GuiController getController() {
+		return controller;
 	}
 
 	private void trySaveCurrentScrollPosition(){

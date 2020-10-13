@@ -145,7 +145,8 @@ public class FileViewport extends EditorViewport {
 				new JavaEditorPane(controller, resource) :
 				new EditorPane<>(controller, lang, (a, b) -> null);
 		pane.setText(new String(last));
-		pane.setWrapText(lang.doWrap());
+		pane.scrollToTop();
+		pane.setWrapText(lang.doWrap() || controller.config().display().forceWordWrap);
 		pane.setEditable(resource.isPrimary());
 		pane.setOnKeyReleased(e -> current = pane.getText().getBytes());
 		setCenter(pane);
@@ -160,6 +161,13 @@ public class FileViewport extends EditorViewport {
 	public void setOverrideMode(FileMode overrideMode) {
 		this.overrideMode = overrideMode;
 		updateView();
+	}
+
+	/**
+	 * @return Controller
+	 */
+	public GuiController getController() {
+		return controller;
 	}
 
 	/**

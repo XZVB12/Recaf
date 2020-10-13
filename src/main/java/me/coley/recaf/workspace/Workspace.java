@@ -12,6 +12,7 @@ import me.coley.recaf.control.Controller;
 import me.coley.recaf.control.headless.HeadlessController;
 import me.coley.recaf.graph.flow.FlowGraph;
 import me.coley.recaf.graph.inheritance.HierarchyGraph;
+import me.coley.recaf.mapping.AsmMappingUtils;
 import me.coley.recaf.parse.javadoc.Javadocs;
 import me.coley.recaf.parse.source.*;
 import me.coley.recaf.util.Log;
@@ -32,6 +33,8 @@ import java.util.stream.Stream;
  */
 public class Workspace {
 	private static final LazyClasspathResource CP = LazyClasspathResource.get();
+	private final Map<String, String> aggregatedMappings = new HashMap<>();
+	private final PhantomResource phantoms = new PhantomResource();
 	private final JavaResource primary;
 	private final List<JavaResource> libraries;
 	private HierarchyGraph hierarchyGraph;
@@ -77,6 +80,13 @@ public class Workspace {
 	}
 
 	/**
+	 * @return Recaf managed resource containing phantom references.
+	 */
+	public PhantomResource getPhantoms() {
+		return phantoms;
+	}
+
+	/**
 	 * @return Inheritance hierarchy utility.
 	 */
 	public HierarchyGraph getHierarchyGraph() {
@@ -94,6 +104,13 @@ public class Workspace {
 		return flowGraph;
 	}
 
+	/**
+	 * @return Aggregated ASM mappings for the workspace.
+	 */
+	public Map<String, String> getAggregatedMappings() {
+		return Collections.unmodifiableMap(aggregatedMappings);
+	}
+
 	// ====================================== RENAME UTILS ====================================== //
 
 	private Set<String> definitionUpdatedClasses = Collections.emptySet();
@@ -102,7 +119,7 @@ public class Workspace {
 	 * @return File location of temporary primary jar.
 	 */
 	public File getTemporaryPrimaryDefinitionJar() {
-		return JavacCompiler.getCompilerClassspathDirectory().resolve("primary.jar").toFile();
+		return JavacCompiler.getCompilerClasspathDirectory().resolve("primary.jar").toFile();
 	}
 
 	/**
@@ -155,6 +172,49 @@ public class Workspace {
 		});
 	}
 
+	/**
+	 * Update the generated jar file
+	 */
+	public void analyzePhantoms() {
+		Controller controller = Recaf.getController();
+		if (controller == null || controller instanceof HeadlessController) {
+			// If we're using a headless controller, we very likely do not need to create phantom references.
+			// (Realistically, I doubt people will use the assembler in CLI mode)
+			return;
+		}
+		// Thread this so we don't hang any important threads.
+		ThreadUtil.run(() -> {
+			try {
+				long start = System.currentTimeMillis();
+				phantoms.populatePhantoms(getPrimaryClasses());
+				Log.debug("Generated {} phantom classes in {} ms",
+						phantoms.getClasses().size(), (System.currentTimeMillis() - start));
+			} catch (Throwable t) {
+				Log.error(t, "Failed to analyze phantom references for primary resource");
+			}
+		});
+	}
+
+	/**
+	 * Update the aggregate ASM mappings in the workspace.
+	 *
+	 * @param newMappings    The additional ASM mappings that were added.
+	 * @param changedClasses The set of class names that have been updated as a result of the definition changes.
+	 */
+	public void updateAggregateMappings(Map<String, String> newMappings, Set<String> changedClasses) {
+		Map<String, String> usefulMappings = new HashMap<>();
+		for (Map.Entry<String, String> newMapping : newMappings.entrySet()) {
+			// only process mappings that actually caused changes in their own class
+			String className = AsmMappingUtils.getClassNameFromAsmKey(newMapping.getKey());
+			if (!changedClasses.contains(className)) {
+				Log.trace("Omitting unused mapping: " + newMapping.getKey() + " -> " + newMapping.getValue());
+				continue;
+			}
+
+			usefulMappings.put(newMapping.getKey(), newMapping.getValue());
+		}
+		AsmMappingUtils.applyMappingToExisting(this.aggregatedMappings, usefulMappings);
+	}
 
 	// ================================= CLASS / RESOURCE UTILS ================================= //
 
@@ -225,6 +285,8 @@ public class Workspace {
 				return resource;
 		if(CP.getClasses().containsKey(name))
 			return CP;
+		else if (phantoms.getClasses().containsKey(name))
+			return phantoms;
 		return null;
 	}
 
@@ -251,12 +313,15 @@ public class Workspace {
 	 * @return {@code true} if one of the workspace sources contains the class.
 	 */
 	public boolean hasClass(String name) {
-		if(primary.getClasses().containsKey(name))
+		if (primary.getClasses().containsKey(name))
 			return true;
-		for(JavaResource resource : getLibraries())
-			if(resource.getClasses().containsKey(name))
+		for (JavaResource resource : getLibraries())
+			if (resource.getClasses().containsKey(name))
 				return true;
-		return CP.getClasses().containsKey(name);
+		if (CP.getClasses().containsKey(name))
+			return true;
+		else
+			return phantoms.getClasses().containsKey(name);
 	}
 
 	/**
@@ -289,7 +354,11 @@ public class Workspace {
 			if(ret != null)
 				return ret;
 		}
-		return CP.getClasses().get(name);
+		if (CP.getClasses().containsKey(name))
+			return CP.getClasses().get(name);
+		else if (phantoms.getClasses().containsKey(name))
+			return phantoms.getClasses().get(name);
+		return null;
 	}
 
 	/**
