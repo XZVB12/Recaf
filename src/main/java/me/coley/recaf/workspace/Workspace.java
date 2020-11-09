@@ -33,7 +33,7 @@ import java.util.stream.Stream;
  */
 public class Workspace {
 	private static final LazyClasspathResource CP = LazyClasspathResource.get();
-	private final Map<String, String> aggregatedMappings = new HashMap<>();
+	private final Map<String, String> aggregatedMappings = new TreeMap<>();
 	private final PhantomResource phantoms = new PhantomResource();
 	private final JavaResource primary;
 	private final List<JavaResource> libraries;
@@ -182,6 +182,9 @@ public class Workspace {
 			// (Realistically, I doubt people will use the assembler in CLI mode)
 			return;
 		}
+		// Skip if phantoms disabled
+		if (!controller.config().assembler().phantoms)
+			return;
 		// Thread this so we don't hang any important threads.
 		ThreadUtil.run(() -> {
 			try {
