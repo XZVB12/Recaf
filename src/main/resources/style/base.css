@@ -27,8 +27,12 @@
 	-fx-border-width: 0;
    	-fx-background-insets: -1;
 }
+/* This is the default monospaced entry, but is overridden with a separate user-generated sheet */
 .monospaced {
 	-fx-font-family: 'monospaced';
+}
+.drag-target {
+    -fx-effect: innershadow(one-pass-box, rgba(15, 200, 255), 50, 0.333, 0, 0);
 }
 /* =========================
  * ==     JFX Controls    ==
@@ -53,7 +57,7 @@
 .tree-cell-instruction,
 .tree-cell-local,
 .tree-cell-catch {
-	-fx-font-family: Consolas, Courier;
+
 }
 /* =========================
  * ==     Hex Controls    ==

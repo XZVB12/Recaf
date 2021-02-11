@@ -1,4 +1,4 @@
-package me.coley.recaf.ui.controls;
+package me.coley.recaf.ui.controls.pane;
 
 import javafx.application.Platform;
 import javafx.scene.Node;
@@ -6,8 +6,10 @@ import javafx.scene.control.*;
 import me.coley.recaf.config.*;
 import me.coley.recaf.control.gui.GuiController;
 import me.coley.recaf.plugin.api.ConfigurablePlugin;
-import me.coley.recaf.ui.Toggle;
+import me.coley.recaf.ui.controls.Toggle;
+import me.coley.recaf.ui.controls.*;
 import me.coley.recaf.util.Log;
+import me.coley.recaf.util.OSUtil;
 
 import java.util.*;
 import java.util.function.Function;
@@ -20,6 +22,7 @@ import java.util.function.Function;
 public class ConfigPane extends ColumnPane {
 	private static final Map<Class<?>, Function<FieldWrapper, Node>> DEFAULT_EDITORS = new HashMap<>();
 	private final Map<String, Function<FieldWrapper, Node>> editorOverrides = new HashMap<>();
+	private final Set<String> ignoredItems = new HashSet<>();
 	private final Configurable config;
 	private boolean hideUnsupported;
 
@@ -41,6 +44,7 @@ public class ConfigPane extends ColumnPane {
 		this(config);
 		editorOverrides.put("display.language", LanguageCombo::new);
 		editorOverrides.put("display.fontsize", v -> new FontSlider(controller, v));
+		editorOverrides.put("display.monofont", v -> new FontComboBox(controller, v, config.monoFont));
 		editorOverrides.put("display.textstyle", v -> new ThemeCombo(controller, v));
 		editorOverrides.put("display.appstyle", v -> new StyleCombo(controller, v));
 		editorOverrides.put("display.classmode", EnumComboBox::new);
@@ -48,6 +52,11 @@ public class ConfigPane extends ColumnPane {
 		editorOverrides.put("display.forceWordWrap", Toggle::new);
 		editorOverrides.put("display.suggest.classerrors", Toggle::new);
 		editorOverrides.put("display.maxrecent", v -> new NumberSlider<>(controller, v, 0, 20, 2));
+		if (OSUtil.getOSType() == OSUtil.MAC) {
+			editorOverrides.put("display.usesystemmenubar", Toggle::new);
+		} else {
+			ignoredItems.add("display.usesystemmenubar");
+		}
 		setupConfigControls(config);
 	}
 
@@ -136,6 +145,9 @@ public class ConfigPane extends ColumnPane {
 		for(FieldWrapper field : config.getConfigFields()) {
 			// Skip hidden values
 			if(field.hidden())
+				continue;
+			// Skip ignored items
+			if(ignoredItems.contains(field.key()))
 				continue;
 			// Create label node
 			Node label = null;

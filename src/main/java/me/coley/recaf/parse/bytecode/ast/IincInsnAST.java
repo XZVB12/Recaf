@@ -2,6 +2,7 @@ package me.coley.recaf.parse.bytecode.ast;
 
 import me.coley.recaf.parse.bytecode.MethodCompilation;
 import me.coley.recaf.parse.bytecode.exception.AssemblerException;
+import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
 
 /**
@@ -38,6 +39,11 @@ public class IincInsnAST extends InsnAST implements VariableReference {
 		return variable;
 	}
 
+	@Override
+	public int getVariableSort() {
+		return Type.INT;
+	}
+
 	/**
 	 * @return Increment value AST.
 	 */
@@ -52,7 +58,7 @@ public class IincInsnAST extends InsnAST implements VariableReference {
 
 	@Override
 	public void compile(MethodCompilation compilation) throws AssemblerException {
-		compilation.addInstruction(new IincInsnNode(getVariableIndex(compilation.getVariables()),
+		compilation.addInstruction(new IincInsnNode(getVariableIndex(compilation.getVariableNameCache()),
 				getIncrement().getIntValue()), this);
 	}
 }

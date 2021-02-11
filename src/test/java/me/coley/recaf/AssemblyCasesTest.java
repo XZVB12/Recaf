@@ -1,7 +1,7 @@
 package me.coley.recaf;
 
 import me.coley.recaf.parse.bytecode.*;
-import me.coley.analysis.value.SimulatedVirtualValue;
+import me.coley.analysis.value.VirtualValue;
 import me.coley.analysis.value.AbstractValue;
 import me.coley.recaf.parse.bytecode.ast.RootAST;
 import me.coley.recaf.parse.bytecode.exception.AssemblerException;
@@ -28,7 +28,7 @@ public class AssemblyCasesTest {
 	@BeforeEach
 	public void setup() throws IOException {
 		// Set dummy controller/workspace so type analysis works
-		setupController(LazyClasspathResource.get());
+		Recaf.setController(setupController(LazyClasspathResource.get()));
 	}
 
 	@AfterEach
@@ -38,6 +38,57 @@ public class AssemblyCasesTest {
 
 	@Nested
 	public class VerifyPassCases {
+		@Test
+		public void testSharedExceptionHandlerOfDifferentTypes() {
+			String s = "DEFINE PRIVATE example()Z\n" +
+					"TRY EX_START EX_END CATCH(java/lang/InterruptedException) EX_HANDLER\n" +
+					"TRY EX_START EX_END CATCH(java/util/concurrent/TimeoutException) EX_HANDLER\n" +
+					"EX_START:\n" +
+					"NOP\n" +
+					"EX_END:\n" +
+					"GOTO EXIT\n" +
+					"EX_HANDLER:\n" +
+					"ASTORE 1\n" +
+					"ICONST_0\n" +
+					"IRETURN\n" +
+					"EXIT:\n" +
+					"ICONST_1\n" +
+					"IRETURN";
+			verifyPass(Parse.parse(s));
+		}
+
+		@Test
+		public void testScopedVariableDiffs() {
+			String s = "DEFINE public static hi()V\n" +
+					"A:\n" +
+					"LCONST_1\n" +
+					"LSTORE 0\n" +
+					"B:\n" +
+					"GOTO C\n" +
+					"C:\n" +
+					"ICONST_1\n" +
+					"ISTORE 1\n" +
+					"D:\n" +
+					"RETURN";
+			verifyPass(Parse.parse(s));
+		}
+
+		@Test
+		public void testScopedVariableDiffsAlt() {
+			String s = "DEFINE public static hi()V\n" +
+					"A:\n" +
+					"ICONST_1\n" +
+					"ISTORE 1\n" +
+					"B:\n" +
+					"GOTO C\n" +
+					"C:\n" +
+					"LCONST_1\n" +
+					"LSTORE 0\n" +
+					"D:\n" +
+					"RETURN";
+			verifyPass(Parse.parse(s));
+		}
+
 		@Test
 		public void testHelloWorld() {
 			String s = "DEFINE public static hi()V\n" +
@@ -257,6 +308,26 @@ public class AssemblyCasesTest {
 	@Nested
 	public class VerifyFailingCases {
 		@Test
+		public void testScopedVariableDiffs() {
+			// This is the same as the passing test case, but without the jump.
+			// With no jump, there is no ability for a scope change.
+			String s = "DEFINE public static hi()V\n" +
+					"A:\n" +
+					"LCONST_1\n" +
+					"LSTORE 0\n" +
+					"B:\n" +
+					"ICONST_1\n" +
+					"ISTORE 1\n" +
+					"C:\n" +
+					"RETURN";
+			try {
+				verifyFails(Parse.parse(s));
+			} catch(AssemblerException ex) {
+				fail(ex);
+			}
+		}
+
+		@Test
 		public void testStoreObjInInt() {
 			try {
 				verifyFails(parse("ACONST_NULL\nISTORE 0\nRETURN"));
@@ -297,7 +368,14 @@ public class AssemblyCasesTest {
 		@Test
 		public void testStoreDoubleInInt() {
 			try {
-				verifyFails(parse("DCONST_1\nISTORE test\nRETURN"));
+				verifyFails(parse(
+						"DCONST_1\n" +
+						"ISTORE test\n" +
+						"RETURN"));
+				verifyFails(parse(
+						"INVOKESTATIC test.get()D\n" +
+						"ISTORE test\n" +
+						"RETURN"));
 			} catch(AssemblerException ex) {
 				fail(ex);
 			}
@@ -306,7 +384,14 @@ public class AssemblyCasesTest {
 		@Test
 		public void testStoreDoubleInInt2() {
 			try {
-				verifyFails(parse("INVOKESTATIC test.get()D\nISTORE test\nRETURN"));
+				verifyFails(parse(
+						"DCONST_1\n" +
+						"ISTORE 0\n" +
+						"RETURN"));
+				verifyFails(parse(
+						"INVOKESTATIC test.get()D\n" +
+						"ISTORE 0\n" +
+						"RETURN"));
 			} catch(AssemblerException ex) {
 				fail(ex);
 			}
@@ -525,7 +610,7 @@ public class AssemblyCasesTest {
 					"INVOKEVIRTUAL java/lang/StringBuilder.toString()Ljava/lang/String;\n" +
 					"ASTORE str\n" +
 					"RETURN"));
-			SimulatedVirtualValue retFrameLocal = (SimulatedVirtualValue) frames[frames.length - 2].getLocal(1);
+			VirtualValue retFrameLocal = (VirtualValue) frames[frames.length - 2].getLocal(1);
 			assertEquals(part1 + part2, retFrameLocal.getValue());
 		}
 
@@ -557,7 +642,7 @@ public class AssemblyCasesTest {
 					"INVOKEVIRTUAL java/lang/StringBuilder.toString()Ljava/lang/String;\n" +
 					"INVOKESTATIC Logger.print(Ljava/lang/String;)V\n" +
 					"RETURN"));
-			SimulatedVirtualValue retFrameLocal = (SimulatedVirtualValue) frames[frames.length - 2].getLocal(0);
+			VirtualValue retFrameLocal = (VirtualValue) frames[frames.length - 2].getLocal(0);
 			assertFalse(retFrameLocal.isNull());
 			assertFalse(retFrameLocal.isValueUnresolved());
 			assertNotEquals(initial, retFrameLocal.getValue());
@@ -595,7 +680,7 @@ public class AssemblyCasesTest {
 					"INVOKEVIRTUAL java/lang/StringBuilder.toString()Ljava/lang/String;\n" +
 					"INVOKESTATIC Logger.print(Ljava/lang/String;)V\n" +
 					"RETURN"));
-			SimulatedVirtualValue retFrameLocal = (SimulatedVirtualValue) frames[frames.length - 2].getLocal(0);
+			VirtualValue retFrameLocal = (VirtualValue) frames[frames.length - 2].getLocal(0);
 			assertFalse(retFrameLocal.isNull());
 			assertFalse(retFrameLocal.isValueUnresolved());
 			assertNotEquals(initial, retFrameLocal.getValue());
@@ -608,13 +693,13 @@ public class AssemblyCasesTest {
 
 	private static MethodNode compile(ParseResult<RootAST> result) throws AssemblerException {
 		Recaf.getController().config().assembler().verify = false;
-		MethodAssembler assembler = new MethodAssembler("Test", Recaf.getController().config().assembler());
+		MethodAssembler assembler = new MethodAssembler("Test", Recaf.getController());
 		return assembler.compile(result);
 	}
 
 	private static void verifyFails(ParseResult<RootAST> result) throws AssemblerException {
 		Recaf.getController().config().assembler().verify = true;
-		MethodAssembler assembler = new MethodAssembler("Test", Recaf.getController().config().assembler());
+		MethodAssembler assembler = new MethodAssembler("Test", Recaf.getController());
 		try {
 			assembler.compile(result);
 			fail("Code did not throw any verification exceptions");
@@ -625,7 +710,7 @@ public class AssemblyCasesTest {
 
 	private static void verifyPass(ParseResult<RootAST> result) {
 		Recaf.getController().config().assembler().verify = true;
-		MethodAssembler assembler = new MethodAssembler("Test", Recaf.getController().config().assembler());
+		MethodAssembler assembler = new MethodAssembler("Test", Recaf.getController());
 		try {
 			assembler.compile(result);
 		} catch(AssemblerException ex) {
@@ -635,7 +720,7 @@ public class AssemblyCasesTest {
 
 	private static Frame<AbstractValue>[] getFrames(ParseResult<RootAST> result) {
 		Recaf.getController().config().assembler().verify = true;
-		MethodAssembler assembler = new MethodAssembler("Test", Recaf.getController().config().assembler());
+		MethodAssembler assembler = new MethodAssembler("Test", Recaf.getController());
 		try {
 			assembler.compile(result);
 			return assembler.getFrames();

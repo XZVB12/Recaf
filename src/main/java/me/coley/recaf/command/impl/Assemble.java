@@ -2,6 +2,7 @@ package me.coley.recaf.command.impl;
 
 import me.coley.recaf.command.ControllerCommand;
 import me.coley.recaf.command.completion.WorkspaceNameCompletions;
+import me.coley.recaf.metadata.Comments;
 import me.coley.recaf.parse.bytecode.*;
 import me.coley.recaf.parse.bytecode.ast.RootAST;
 import me.coley.recaf.util.ClassUtil;
@@ -83,10 +84,11 @@ public class Assemble extends ControllerCommand implements Callable<Assemble.Res
 			throw new IllegalStateException("Could not read from '" + input + "'");
 		}
 		ParseResult<RootAST> result = Parse.parse(code);
-		MethodAssembler assembler = new MethodAssembler(className, getController().config().assembler());
+		MethodAssembler assembler = new MethodAssembler(className, getController());
 		MethodNode generated = assembler.compile(result);
 		// Replace method
 		MethodNode old = node.methods.get(methodIndex);
+		Comments.removeComments(old);
 		ClassUtil.copyMethodMetadata(old, generated);
 		node.methods.set(methodIndex, generated);
 		//Finalize changes

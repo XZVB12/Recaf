@@ -1,5 +1,6 @@
 package me.coley.recaf.parse.bytecode;
 
+import me.coley.recaf.metadata.Comments;
 import me.coley.recaf.parse.bytecode.ast.*;
 import me.coley.recaf.parse.bytecode.parser.HandleParser;
 import me.coley.recaf.util.*;
@@ -17,9 +18,10 @@ import static org.objectweb.asm.tree.AbstractInsnNode.*;
  * @author Matt
  */
 public class Disassembler {
-	private Map<LabelNode, String> labelToName = new HashMap<>();
-	private List<String> out = new ArrayList<>();
-	private Set<Integer> paramVariables = new HashSet<>();
+	private final Map<LabelNode, String> labelToName = new HashMap<>();
+	private final List<String> out = new ArrayList<>();
+	private final Set<Integer> paramVariables = new HashSet<>();
+	private Comments comments;
 	private MethodNode method;
 	private boolean useIndyAlias = true;
 	private boolean doInsertIndyAlias;
@@ -58,8 +60,11 @@ public class Disassembler {
 
 	private void setup(MethodNode value) {
 		this.method = value;
+		comments = new Comments(value);
 		// Ensure there is a label before the first variable instruction and after the last usage.
 		enforceLabelRanges(value);
+		// Validate each named variable has the same type.
+		splitSameIndexedVariablesOfDiffNames(value);
 		// Validate each named variable has the same type.
 		splitSameNamedVariablesOfDiffTypes(value);
 		// Input validation
@@ -144,8 +149,16 @@ public class Disassembler {
 					out.add(String.format("TRY %s %s CATCH(*) %s", start, end, handler));
 			}
 		// Visit instructions
-		for(AbstractInsnNode insn : value.instructions.toArray())
+		int offset = 0;
+		for (AbstractInsnNode insn : value.instructions.toArray()) {
+			// Prepend comments if found
+			appendComment(offset);
+			// Append instruction
 			appendLine(insn);
+			offset++;
+		}
+		// Append final comment if found
+		appendComment(offset);
 	}
 
 	private void visit(FieldNode value) {
@@ -239,6 +252,13 @@ public class Disassembler {
 				throw new IllegalStateException("Unknown instruction type: " + insn.getType());
 		}
 		out.add(line.toString());
+	}
+
+	private void appendComment(int offset) {
+		String prefix = "// ";
+		String comment = comments.get(offset);
+		if (comment != null)
+			out.add(prefix + String.join("\n" + prefix, comment.split("\n")));
 	}
 
 	private void visitIntInsn(StringBuilder line, IntInsnNode insn) {
@@ -579,7 +599,43 @@ public class Disassembler {
 		}
 		// Logging
 		if (changed) {
-			Log.warn("Replacing confusing variable names in disassembly: " + node.name + node.desc);
+			Log.warn("Separating variables of same name pointing to different indices: " + node.name + node.desc);
+		}
+	}
+
+	/**
+	 * Reallocates variable indices of variables that share the same index but names.
+	 * This is done to prevent type conflicts of variables by the same index in different scopes.
+	 * Recaf does not understand variable scope at the moment,
+	 * so this is a hack to be removed in the future when it does.
+	 *
+	 * @param node
+	 * 		Method to update.
+	 *
+	 * @see VariableGenerator Place to add scoped variable support later.
+	 */
+	public static void splitSameIndexedVariablesOfDiffNames(MethodNode node) {
+		if (node.localVariables == null)
+			return;
+		Map<Integer, String> indexToName = new HashMap<>();
+		boolean changed = false;
+		int nextFreeVar = computeMavVar(AccessFlag.isStatic(node.access), node.localVariables);
+		for(LocalVariableNode lvn : node.localVariables) {
+			int index = lvn.index;
+			String name = lvn.name;
+			if(!name.equals(indexToName.getOrDefault(index, name))) {
+				// Update the variables index and bump the next free index
+				index = lvn.index = nextFreeVar;
+				nextFreeVar += Type.getType(lvn.desc).getSize();
+				indexToName.put(index, lvn.name);
+				changed = true;
+			} else {
+				indexToName.put(index, name);
+			}
+		}
+		// Logging
+		if (changed) {
+			Log.warn("Separating variables of same index reusing the same name: " + node.name + node.desc);
 		}
 	}
 
@@ -600,6 +656,17 @@ public class Disassembler {
 		}
 		return tmp[0];
 	}
+
+	private static int computeMavVar(boolean isStatic, List<LocalVariableNode> vars) {
+		int max = isStatic ? 0 : 1;
+		for (LocalVariableNode lvn : vars) {
+			if (lvn.index >= max) {
+				max = lvn.index + Type.getType(lvn.desc).getSize();
+			}
+		}
+		return max;
+	}
+
 
 	private String name(LabelNode label) {
 		return labelToName.getOrDefault(label, "?");

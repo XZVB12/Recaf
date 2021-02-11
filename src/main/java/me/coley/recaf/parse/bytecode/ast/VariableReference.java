@@ -1,7 +1,8 @@
 package me.coley.recaf.parse.bytecode.ast;
 
+import me.coley.recaf.parse.bytecode.VariableNameCache;
 import me.coley.recaf.parse.bytecode.exception.AssemblerException;
-import me.coley.recaf.parse.bytecode.Variables;
+import org.objectweb.asm.Type;
 
 /**
  * Common to AST that reference variables.
@@ -15,7 +16,12 @@ public interface VariableReference {
 	NameAST getVariableName();
 
 	/**
-	 * @param variables
+	 * @return Variable {@link Type#getSort()}.
+	 */
+	int getVariableSort();
+
+	/**
+	 * @param variableNameCache
 	 * 		Variable name-to-index lookup.
 	 *
 	 * @return Index of {@link #getVariableName()}.
@@ -23,10 +29,10 @@ public interface VariableReference {
 	 * @throws AssemblerException
 	 * 		Variable failed index lookup.
 	 */
-	default int getVariableIndex(Variables variables) throws AssemblerException {
+	default int getVariableIndex(VariableNameCache variableNameCache) throws AssemblerException {
 		try {
-			return variables.getIndex(getVariableName().getName());
-		} catch(AssemblerException ex) {
+			return variableNameCache.getIndex(getVariableName().getName());
+		} catch (AssemblerException ex) {
 			// Rethrow with line number
 			int line = -1;
 			if (this instanceof AST)

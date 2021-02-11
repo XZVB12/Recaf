@@ -13,13 +13,16 @@ import me.coley.recaf.control.gui.GuiController;
 import me.coley.recaf.plugin.PluginsManager;
 import me.coley.recaf.plugin.api.InternalPlugin;
 import me.coley.recaf.plugin.api.WorkspacePlugin;
-import me.coley.recaf.ui.controls.*;
+import me.coley.recaf.ui.controls.ViewportTabs;
+import me.coley.recaf.ui.controls.WorkspaceNavigator;
 import me.coley.recaf.ui.controls.popup.UpdateWindow;
 import me.coley.recaf.ui.controls.view.ClassViewport;
 import me.coley.recaf.ui.controls.view.FileViewport;
+import me.coley.recaf.util.OSUtil;
 import me.coley.recaf.util.ThreadUtil;
-import me.coley.recaf.util.self.SelfUpdater;
+import me.coley.recaf.util.UiUtil;
 import me.coley.recaf.util.VMUtil;
+import me.coley.recaf.util.self.SelfUpdater;
 import me.coley.recaf.workspace.JavaResource;
 import me.coley.recaf.workspace.Workspace;
 import org.plugface.core.annotations.Plugin;
@@ -61,7 +64,11 @@ public class MainWindow extends Application {
 	}
 
 	private void setup() {
-		stage.getIcons().add(new Image(resource("icons/logo.png")));
+		if (OSUtil.getOSType() == OSUtil.MAC) {
+			UiUtil.setupMacDockIcon();
+		} else {
+			stage.getIcons().add(new Image(resource("icons/logo.png")));
+		}
 		stage.setTitle("Recaf");
 		menubar = new MainMenu(controller);
 		root = new BorderPane();

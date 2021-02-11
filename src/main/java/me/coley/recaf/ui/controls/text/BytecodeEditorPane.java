@@ -4,6 +4,7 @@ import javafx.application.Platform;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.effect.ColorAdjust;
+import me.coley.recaf.metadata.Comments;
 import me.coley.recaf.parse.bytecode.*;
 import me.coley.recaf.control.gui.GuiController;
 import me.coley.recaf.parse.bytecode.ast.RootAST;
@@ -58,6 +59,9 @@ public class BytecodeEditorPane extends EditorPane<BytecodeErrorHandling, Byteco
 		this.memberName = memberName;
 		this.memberDesc = memberDesc;
 		this.isMethod = memberDesc.contains("(");
+		final Assembler<?> ass = isMethod ?
+				new MethodAssembler(className, controller) : new FieldAssembler();
+
 		setOnCodeChange(text -> getErrorHandler().onCodeChange(() -> {
 			// Reset current cache
 			currentField = null;
@@ -68,13 +72,14 @@ public class BytecodeEditorPane extends EditorPane<BytecodeErrorHandling, Byteco
 				contextHandler.setAST(result.getRoot());
 			lastParse = result;
 			if(isMethod) {
-				MethodAssembler assembler = new MethodAssembler(className, controller.config().assembler());
+				MethodAssembler assembler = (MethodAssembler) ass;
 				if (controller.config().assembler().useExistingData) {
 					MethodNode existingMethod = ClassUtil.getMethod(controller.getWorkspace()
 							.getClassReader(className), 0, memberName, memberDesc);
 					if (existingMethod != null && existingMethod.localVariables != null) {
-						// We call the disassembler's method here so that any changes the disassembler
+						// We call the disassembler's methods here so that any changes the disassembler
 						// makes to the local variables is what gets populated as default information
+						Disassembler.splitSameIndexedVariablesOfDiffNames(existingMethod);
 						Disassembler.splitSameNamedVariablesOfDiffTypes(existingMethod);
 						assembler.setDefaultVariables(existingMethod.localVariables);
 					}
@@ -84,7 +89,7 @@ public class BytecodeEditorPane extends EditorPane<BytecodeErrorHandling, Byteco
 				stackHelper.setMethodAssembler(assembler);
 				localHelper.setMethodAssembler(assembler);
 			} else {
-				FieldAssembler assembler = new FieldAssembler();
+				FieldAssembler assembler = (FieldAssembler) ass;
 				// Recompile
 				currentField = assembler.compile(result);
 			}
@@ -265,6 +270,7 @@ public class BytecodeEditorPane extends EditorPane<BytecodeErrorHandling, Byteco
 			for(int i = 0; i < existingNode.methods.size(); i++) {
 				MethodNode existingMethod = existingNode.methods.get(i);
 				if(existingMethod.name.equals(newMemberName) && existingMethod.desc.equals(newMemberDesc)) {
+					Comments.removeComments(existingMethod);
 					ClassUtil.copyMethodMetadata(existingMethod, currentMethod);
 					existingNode.methods.set(i, currentMethod);
 					found = true;

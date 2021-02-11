@@ -43,6 +43,11 @@ public class ConfDisplay extends Config {
 	@Conf("display.fontsize")
 	public double fontSize = 12;
 	/**
+	 * Font family for monospaced text.
+	 */
+	@Conf("display.monofont")
+	public String monoFont = "monospaced";
+	/**
 	 * Force word wrapping even when it is not recommended.
 	 */
 	@Conf("display.forceWordWrap")
@@ -57,6 +62,11 @@ public class ConfDisplay extends Config {
 	 */
 	@Conf("display.maxrecent")
 	public long maxRecentFiles = 6;
+	/**
+	 * Use system menubar on macOS.
+	 */
+	@Conf("display.usesystemmenubar")
+	public boolean useSystemMenubar;
 
 	ConfDisplay() {
 		super("display");

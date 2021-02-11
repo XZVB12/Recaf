@@ -8,6 +8,7 @@ import me.coley.recaf.plugin.PluginsManager;
 import me.coley.recaf.plugin.api.EntryLoaderProviderPlugin;
 import me.coley.recaf.util.Log;
 import me.coley.recaf.util.Natives;
+import me.coley.recaf.util.OSUtil;
 import me.coley.recaf.util.VMUtil;
 import me.coley.recaf.util.self.SelfDependencyPatcher;
 import me.coley.recaf.util.self.SelfUpdater;
@@ -29,8 +30,8 @@ import static me.coley.recaf.util.Log.*;
  * @author Matt
  */
 public class Recaf {
-	public static final String VERSION = "2.12.0";
-	public static final String DOC_URL = "https://col-e.github.io/Recaf/documentation.html";
+	public static final String VERSION = "2.17.5";
+	public static final String DOC_URL = "https://col-e.github.io/Recaf-documentation/";
 	public static final int ASM_VERSION = Opcodes.ASM9;
 	private static Controller currentController;
 	private static Workspace currentWorkspace;
@@ -93,7 +94,11 @@ public class Recaf {
 	private static void launch(String[] args) {
 		// Setup initializer, this loads command line arguments
 		Initializer initializer = new Initializer();
-		new CommandLine(initializer).execute(args);
+		CommandLine commandLine = new CommandLine(initializer);
+		commandLine.execute(args);
+		if (commandLine.getUnmatchedArguments().size() > 0)
+			return;
+
 		headless = initializer.cli;
 		loadPlugins();
 		// Do version check
@@ -172,8 +177,18 @@ public class Recaf {
 	public static Path getDirectory() {
 		Path configDir = Recaf.configDir;
 		if (configDir == null) {
-			configDir = Recaf.configDir = Paths.get(BaseDirectories.get().configDir)
-					.resolve("Recaf");
+			try {
+				configDir = Recaf.configDir = Paths.get(BaseDirectories.get().configDir)
+						.resolve("Recaf");
+			} catch (Throwable t) {
+				// BaseDirectories library has a powershell problem...
+				// This should only affect windows
+				if (OSUtil.getOSType() == OSUtil.WINDOWS) {
+					configDir = Paths.get(System.getenv("APPDATA"), "Recaf");
+				} else {
+					throw new IllegalStateException("Failed to initialize Recaf directory");
+				}
+			}
 		}
 		return configDir;
 	}

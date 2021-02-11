@@ -2,12 +2,19 @@
 
 ![screenshot of recaf](docs/screenshots/main-anim.gif)
 
-An easy to use modern Java bytecode editor that abstracts away the complexities of Java programs. 
-Recaf will automatically handle generation of stack frames and constant pool entries for you.
+An easy to use modern Java bytecode editor that abstracts away the complexities of Java programs.
+Recaf abstracts away:
 
-* _[Usage & Documentation](https://col-e.github.io/Recaf/documentation.html)_
+* Constant pool
+* Stack frames
+* Wide instructions
+* And more!
 
-### Download
+Don't know bytecode? That's ok because Recaf supports [recompiling decompiled code](https://col-e.github.io/Recaf-documentation/use-edit-via-decompile.html) and inserting [single line Java statements into the bytecode](https://col-e.github.io/Recaf-documentation/use-assembler.html).
+
+For more information: _[Read the documentation](https://col-e.github.io/Recaf-documentation/)_
+
+## Download
 
 See the [releases](https://github.com/Col-E/Recaf/releases) page for the latest build.
 
@@ -36,7 +43,7 @@ Open the project in an IDE or generate the build with maven.
 **IDE**:
   1. Import the project from the `pom.xml`
       * [IntelliJ](https://www.jetbrains.com/help/idea/maven-support.html#maven_import_project_start)
-      * [Eclipse](https://stackoverflow.com/a/36242422) - _(Warning: Eclipse's custom compiler cannot Recaf because of incorrect generics parsing)_
+      * [Eclipse](https://stackoverflow.com/a/36242422) - _(Warning: Eclipse's custom compiler cannot compile Recaf because of incorrect generics parsing)_
   2. Create a run configuration with the main class `me.coley.recaf.Recaf`
   
 **Without IDE**:

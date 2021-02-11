@@ -1,11 +1,14 @@
 package me.coley.recaf.parse.bytecode.ast;
 
+import me.coley.recaf.parse.bytecode.MethodCompilation;
+import me.coley.recaf.parse.bytecode.exception.AssemblerException;
+
 /**
  * Comment AST.
  *
  * @author Matt
  */
-public class CommentAST extends AST {
+public class CommentAST extends AST implements Compilable {
 	private final String comment;
 
 	/**
@@ -32,5 +35,10 @@ public class CommentAST extends AST {
 	@Override
 	public String print() {
 		return "//" + comment;
+	}
+
+	@Override
+	public void compile(MethodCompilation compilation) throws AssemblerException {
+		compilation.addComment(comment.trim());
 	}
 }
